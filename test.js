@@ -66,6 +66,30 @@ it('should process css', function () {
   })
 })
 
+it('should throw an error if the inputTrees is not an array', function () {
+  assert.throws(function () {
+    postcssCompiler('fixture', 'syntax-error.css', 'output.css', testWarnPluginSet, map)
+  }, /Expected array for first argument/, 'Did not throw an error for an incorrect inputTree.')
+})
+
+// it('should throw an error if no plugins are provided', function () {
+  // assert.throws(function () {
+    // postcssCompiler(['fixture'], 'syntax-error.css', 'output.css', [], map)
+  // }, /You must provide at least 1 plugin in the plugin array/, 'Did not throw an error for having no plugins.')
+// })
+
+it('should create stats json', function () {
+  var outputTree = postcssCompiler(['fixture'], 'success.css', 'output.css', basicPluginSet, map, { enabled: true })
+  outputTree.warningStream = warningStreamStub
+
+  return (new broccoli.Builder(outputTree)).build().then(function (dir) {
+    var statsObject = JSON.parse(fs.readFileSync(path.join(dir.directory, 'output.css.stats.json'), 'utf8'))
+
+    assert.strictEqual(statsObject.rules.total, 1)
+    assert.deepEqual(warnings, [])
+  })
+})
+
 it('should expose warnings', function () {
   var outputTree = postcssCompiler(['fixture'], 'warning.css', 'output.css', testWarnPluginSet, map)
   outputTree.warningStream = warningStreamStub

@@ -5,10 +5,11 @@ var assign = require('object-assign')
 var includePathSearcher = require('include-path-searcher')
 var CachingWriter = require('broccoli-caching-writer')
 var postcss = require('postcss')
+var cssstats = require('cssstats')
 
-function PostcssCompiler (inputTrees, inputFile, outputFile, plugins, map) {
+function PostcssCompiler (inputTrees, inputFile, outputFile, plugins, map, stats) {
   if (!(this instanceof PostcssCompiler)) {
-    return new PostcssCompiler(inputTrees, inputFile, outputFile, plugins, map)
+    return new PostcssCompiler(inputTrees, inputFile, outputFile, plugins, map, stats)
   }
 
   if (!Array.isArray(inputTrees)) {
@@ -21,6 +22,7 @@ function PostcssCompiler (inputTrees, inputFile, outputFile, plugins, map) {
   this.outputFile = outputFile
   this.plugins = plugins || []
   this.map = map || {}
+  this.stats = stats || {}
   this.warningStream = process.stderr
 }
 
@@ -42,6 +44,16 @@ PostcssCompiler.prototype.build = function () {
     to: toFilePath,
     map: this.map
   }
+  var stats = assign({
+    enabled: false,
+    options: {
+      pecificityGraph: true,
+      sortedSpecificityGraph: true,
+      repeatedSelectors: true,
+      propertyResets: true,
+      vendorPrefixedProperties: true
+    }
+  }, this.stats)
 
   this.plugins.forEach(function (plugin) {
     var pluginOptions = assign(options, plugin.options || {})
@@ -60,6 +72,13 @@ PostcssCompiler.prototype.build = function () {
     fs.writeFileSync(toFilePath, result.css, {
       encoding: 'utf8'
     })
+
+    if (stats.enabled) {
+      var statsDetails = cssstats(result.css, stats.options)
+      fs.writeFileSync(toFilePath + '.stats.json', JSON.stringify(statsDetails), {
+        encoding: 'utf8'
+      })
+    }
 
     if (result.map) {
       fs.writeFileSync(toFilePath + '.map', result.map, {
