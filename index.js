@@ -7,22 +7,37 @@ var CachingWriter = require('broccoli-caching-writer')
 var postcss = require('postcss')
 var cssstats = require('cssstats')
 
-function PostcssCompiler (inputTrees, inputFile, outputFile, plugins, map, stats) {
+function PostcssCompiler (inputTrees, inputFile, outputFile, options) {
   if (!(this instanceof PostcssCompiler)) {
-    return new PostcssCompiler(inputTrees, inputFile, outputFile, plugins, map, stats)
+    return new PostcssCompiler(inputTrees, inputFile, outputFile, options)
   }
 
   if (!Array.isArray(inputTrees)) {
     throw new Error('Expected array for first argument - did you mean [tree] instead of tree?')
   }
 
+  if (!options.plugins || options.plugins.length < 1) {
+    throw new Error('You must provide at least 1 plugin in the plugin array')
+  }
+
   CachingWriter.call(this, Array.isArray(inputTrees) ? inputTrees : [inputTrees])
 
   this.inputFile = inputFile
   this.outputFile = outputFile
-  this.plugins = plugins || []
-  this.map = map || {}
-  this.stats = stats || {}
+  this.options = assign({
+    plugins: [],
+    map: {},
+    stats: {
+      enabled: false,
+      options: {
+        specificityGraph: true,
+        sortedSpecificityGraph: true,
+        repeatedSelectors: true,
+        propertyResets: true,
+        vendorPrefixedProperties: true
+      }
+    }
+  }, options)
   this.warningStream = process.stderr
 }
 
@@ -32,37 +47,24 @@ PostcssCompiler.prototype.constructor = PostcssCompiler
 PostcssCompiler.prototype.build = function () {
   var toFilePath = this.outputPath + '/' + this.outputFile
   var fromFilePath = includePathSearcher.findFileSync(this.inputFile, this.inputPaths)
-
-  if (!this.plugins || this.plugins.length < 1) {
-    throw new Error('You must provide at least 1 plugin in the plugin array')
-  }
-
+  var stats = this.options.stats
+  var plugins = this.options.plugins
   var processor = postcss()
   var css = fs.readFileSync(fromFilePath, 'utf8')
-  var options = {
+  var postcssOptions = {
     from: fromFilePath,
     to: toFilePath,
-    map: this.map
+    map: this.options.map
   }
-  var stats = assign({
-    enabled: false,
-    options: {
-      pecificityGraph: true,
-      sortedSpecificityGraph: true,
-      repeatedSelectors: true,
-      propertyResets: true,
-      vendorPrefixedProperties: true
-    }
-  }, this.stats)
 
-  this.plugins.forEach(function (plugin) {
-    var pluginOptions = assign(options, plugin.options || {})
+  plugins.forEach(function (plugin) {
+    var pluginOptions = assign(postcssOptions, plugin.options || {})
     processor.use(plugin.module(pluginOptions))
   })
 
   var warningStream = this.warningStream
 
-  return processor.process(css, options)
+  return processor.process(css, postcssOptions)
   .then(function (result) {
     result.warnings().forEach(function (warn) {
       warningStream.write(warn.toString())
@@ -75,7 +77,7 @@ PostcssCompiler.prototype.build = function () {
 
     if (stats.enabled) {
       var statsDetails = cssstats(result.css, stats.options)
-      fs.writeFileSync(toFilePath + '.stats.json', JSON.stringify(statsDetails), {
+      fs.writeFileSync(toFilePath + '.json', JSON.stringify(statsDetails), {
         encoding: 'utf8'
       })
     }
